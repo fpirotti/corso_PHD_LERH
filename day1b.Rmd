@@ -1,0 +1,109 @@
+---
+title: "Day 1"
+author: "Francesco Pirotti"
+date: "12/3/2021"
+
+---
+
+
+## String manipulation and downloading  
+
+ Grab some raster data from online files
+ Here we learn to wrangle strings coming from HTML
+ We need the RCurl package for this, which allows to deal with HTML,
+ Data is from the WorldCLIM database <https://www.worldclim.org/data/index.html>{target=_blank}
+
+```{r}
+
+require("RCurl") 
+#' below the url with the data - remember the final "/" 
+url<-"https://www.cirgeo.unipd.it/shared/tmp/corsoPHD/worldClim/"
+result <- getURL(url,verbose=TRUE,ftp.use.epsv=TRUE, dirlistonly = TRUE)
+#head(result)
+#' OMG what is this?? It is HTML, i.e. XML which is a tagged language.
+#'  we need another package 
+library(XML)
+
+
+#'  Here we have a function inside another function
+links <-  grep(".tif$", getHTMLLinks(result), value=T)
+
+#'  Download two file if not already present
+if( !file.exists(links[[1]]) ){
+  download.file( file.path(url, links[[1]]), destfile = links[[1]] ) 
+}
+
+if( !file.exists(links[[2]]) ){
+  download.file( file.path(url, links[[2]]), destfile = links[[2]] )
+}
+
+```
+
+
+
+## Open raster and plot some data
+
+Use "terra" package... as you can see, some function names are the same in different packages. To make sure you use the right function use <packagename>::<function name> like below.
+
+```{r}
+
+myFirstRaster <- terra::rast( links[[1]] )
+terra::hist(myFirstRaster)
+
+mySecondRaster <- terra::rast( links[[2]] )
+
+
+par(mfrow=c(1,1))
+terra::plot(mySecondRaster)
+terra::plot(myFirstRaster)
+
+```
+  
+  
+## Are these data correlated?  
+
+Let's check the values...
+
+```{r}
+
+vector.raster.1 <- terra::values(myFirstRaster)
+vector.raster.2 <- mySecondRaster[]
+
+#' simple linear model
+
+lm.model<-lm(vector.raster.1 ~  vector.raster.2)
+
+summary(lm.model)
+
+# plot(vector.raster.1 , vector.raster.2)
+
+```
+
+  
+## OK let's batch downlad ...
+
+Introduction to loops! We want to apply the same process, e.g. download and view, for the first 10 raster and check if there is any correlation or covariance between them. Therefore we will have a correlation/covariance matrix, a symmetric matrix, i.e.  $A = A^{T}$ - for example 
+
+
+$$Cov_{N x N} = \begin{bmatrix}1 & x_{1,2} & x_{1,...} & x_{1,N}\\
+x_{2,1} & 1 & x_{2,3} & x_{2,N}\\
+x_{3,1} & x_{3,2} & 1  & x_{...,N}\\
+x_{4,1} & x_{4,2} & x_{4,3}   & 1_{N,N}\\
+\end{bmatrix}$$
+
+
+```{r}
+
+vector.raster.1 <- terra::values(myFirstRaster)
+vector.raster.2 <- mySecondRaster[]
+
+#' simple linear model
+
+lm.model<-lm(vector.raster.1 ~  vector.raster.2)
+
+summary(lm.model)
+
+# plot(vector.raster.1 , vector.raster.2)
+
+```
+
