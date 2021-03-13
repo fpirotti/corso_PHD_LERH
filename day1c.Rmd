@@ -1,0 +1,206 @@
+---
+title: "Day 1 Part B"
+author: "Francesco Pirotti"
+date: "12/3/2021"
+output: 
+  html_document:
+    toc: true 
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+  pdf_document: default
+---
+
+# Process Earth Data
+
+Now that we know a bit on how to read raster and vector data, let's use them to analyse more in depth our study area.
+
+Here we are going to learn how to:
+
+-   Loop for downloading and reading all the bioclimatic rasters in the web space.
+-   Do band math to calculate an Aridity Index using bio-climatic variables.
+-   Compare two methods for calculating the AI
+-   Write output raster to files
+
+## Loops
+
+Introduction to loops! We want to apply the same process, e.g. download and view, for all the rasters and check if there is any correlation or covariance between them. Therefore we will have a correlation matrix, a symmetric matrix, i.e. $A = A^{T}$ - for example
+
+$$Cov_{N x N} = \begin{bmatrix}1 & x_{1,2} & x_{1,...} & x_{1,N}\\
+x_{2,1} & 1 & x_{2,3} & x_{2,N}\\
+x_{3,1} & x_{3,2} & 1  & x_{...,N}\\
+x_{4,1} & x_{4,2} & x_{4,3}   & 1_{N,N}\\
+\end{bmatrix}$$
+
+First let's create a function doing what we want. Remember, functions take arguments inside the parenthesis variables declared inside that function have a scope only INSIDE that function UNLESS THE \<\<- operator is used.
+
+```{r}
+#' As usual we load the packages that we need in the script
+require(terra)
+
+load(file="links.rda")
+load(file="cells.rda")
+
+#' We create an empty list that we will fill with our raster pointers
+
+myRasters<-list()
+
+myProcess<-function(filename){
+  
+  if( !file.exists(filename) ){
+    download.file( file.path(url, filename), destfile = filename ) 
+  }
+  
+  myRaster <- terra::rast( filename )
+  
+  #' String manipulation to get the file name
+  filename.clean <- gsub(" ", "__", urltools::url_decode(basename(filename)))
+  myRasters[[filename.clean]] <<- myRaster
+  myRaster[cells][[1]]
+  #myRaster[]
+   #' you can also use:
+   #'     return(myRaster[]) or....
+   #'     values<-myRaster[]
+   #'     return(values)
+   
+}
+
+#' Let's run the above function over all files - there are MANY ways to loop with R 
+#' We use a list to add results of sampled cells, BUT
+#' the function itself fills another list called "myRasters" with pointers to the 
+#' raster file
+
+samples<-list()
+
+for(file in links){
+  samples[[file]] <- myProcess(file)
+}
+
+#' myRasters list is filled!!!!
+names(myRasters)
+
+```
+
+## Raster stacks
+
+Raster can be "multi-band" in the sense one raster file can have multiple bands (usually interpreted throught the RGB color combination).
+
+We can stack our raster in a single raster just like a list of rasters.
+
+```{r}
+
+stack <- terra::rast(myRasters)
+
+#' Strange, did we not clean the names?
+names(stack)
+
+#' Yes we did, but the stack took the original named raster
+#' so we have to rename.
+names(stack)<- names(myRasters)
+
+#plot(stack)
+
+
+```
+
+## Raster band math
+
+Simple "raster calculator" operations can be done with raster objects.
+
+For example below we normalize from -1 to 1 the values of annual mean temperature and rainfall and create a mixed climate index.
+
+### Calculate Aridity Index
+
+Aridity Index (AI) quantifies the gap between rainfall and water demand which, through the formula adopted by UNEP and FAO:
+
+$cov=\frac{P}{ET_0}$
+
+where P is the annual precipitation and ${ET_0}$ is evapotranspiration.
+
++-------+------------------------+-----------------------+
+| Class | Aridity Index (AI)     | Value                 |
++=======+========================+=======================+
+| 1     | AI \< 0.05             | Hyper-arid            |
++-------+------------------------+-----------------------+
+| 2     | 0.05 \< AI \< 0.2      | Arid                  |
++-------+------------------------+-----------------------+
+| 3     | 0.2 \< AI \< 0.5       | Semi Arid             |
++-------+------------------------+-----------------------+
+| 4     | 0.5 \< AI \< 0.65      | Dry                   |
++-------+------------------------+-----------------------+
+| 5     | 0.65 \< AI \> 0.75     | Dry sub-humid         |
++-------+------------------------+-----------------------+
+| 6     | 0.65 \< AI \> 0.75     | Humid                 |
++-------+------------------------+-----------------------+
+| 7     | AI \> 0.75             | Hyper Humid           |
++-------+------------------------+-----------------------+
+
+: AI values
+
+We will compare results from estimating evapotranspiration using:
+
+-   Hargreaves/Samani equation, which requires minimum and maximum daily temperature data. George H. Hargreaves, Zohrab A. Samani - Applied Engineering in Agriculture. 1(2): 96-99. (doi: 10.13031/2013.26773) @1985
+
+See: Moeletsi ME, Walker S, Hamandawana H (2013) Comparison of the Hargreaves and Samani equation and the Thornthwaite equation for estimating dekadal evapotranspiration in the Free State Province, South Africa. Physics and Chemistry of the Earth, Parts A/B/C 66:4--15. <https://doi.org/10.1016/j.pce.2013.08.003>
+
+Hargreaves/Samani equation:
+
+$ET_0=0.0135*(KT)*(T_{av}+17.8)*(T_{max}-T_{min})^{0.5}*R_a*0.408*d$
+
+where $d$ is 365 (number of days) and $KT$ is the empirical coefficient (default value = 0.17); $T_{av}$, $T_{max}$ and $T_{min}$ are the yearly mean, maximum and minimum air temperatures in °C; $Ra$ is the extraterrestrial radiation ($MJ*m^{−2}$) - see <http://www.fao.org/3/X0490E/x0490e07.htm#radiation> for the values - we will use $Ra = 22 {MJ} * day^{-1}$; 0.408 is the constant for converting $MJ*m^{−2}$ into mm and 0.0135 is the original coefficient of the Hargreaves and Samani equation.
+
+Thornthwaite equation is an alternative equation but requires montly average so we will not use it:
+
+$ET_0=16*\frac{d}{30}(10\frac{T_{av}}{I})^a$
+
+```{r}
+
+#' Calculate using Hargreaves/Samani equation
+ET0.hs <- 0.0135*0.17*(stack$`clip_Annual%20Mean%20Temperature`+17.8)*(stack$`clip_Temperature%20Annual%20Range%20BIO5-BIO6`^0.5*22*0.408*365)
+
+AI.hs <- stack$`clip_Annual%20Precipitation` / ET0.hs
+summary(AI.hs)
+
+#' We can classify with the "cuts" of table above with AI values.
+categorie <- c(0   , 0.05, 1,
+  0.05, 0.20, 2,
+  0.2,  0.5,  3,
+  0.5,  0.65, 4, 
+  0.65, 0.75, 5, 
+  0.75, 1.5,  6, 
+  1.5,  3,    7,
+  3, 120,       8)
+categorie.matrice <- matrix(categorie, ncol=3, byrow=TRUE)
+#' We use "as.factor" to change the raster to discrete value raster
+AI.hs.classed <- as.factor(classify(AI.hs, categorie.matrice, include.lowest=TRUE))
+
+summary(AI.hs.classed)
+plot( AI.hs.classed)
+
+```
+
+## Write raster files
+
+Rasters are spatial objects and as such they can be written to common raster formats like GeoTIFFs or others.
+
+For more reading on raster formats see <https://gdal.org/drivers/raster/index.html>.
+
+```{r}
+#' Try opening it in QGIS
+terra::writeRaster(AI.hs.classed, "AridityIndex.tif")
+
+```
+
+
+## Write vector files
+
+A table with coordinates can be converted to a spatial object and as such it can be written to common vector formats, e.g. ESRI Shapefiles, or Geopackage .
+
+For more reading on vector formats see <https://gdal.org/drivers/vector/index.html>.
+
+```{r}
+
+
+
+```
+

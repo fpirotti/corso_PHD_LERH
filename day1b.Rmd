@@ -1,12 +1,32 @@
 ---
-title: "Day 1"
+title: "Day 1 Part B"
 author: "Francesco Pirotti"
 date: "12/3/2021"
+output: 
+  html_document:
+    toc: true 
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+  pdf_document: default
 
 ---
 
+# Raster and Vector Data
 
-## String manipulation and downloading  
+We will learn to read and do some basic processing of raster and vector data.
+
+Raster data is a gridded format with a specific spatial resolution and georeferenced through one or more points - usually the bottom left (south-east) cell center. 
+
+We will learn to:
+
+ - read and write tables, rasters and vectors
+ - understand what is a coordinate reference system
+ - calculate R and R-squared for correlation and determination 
+ - see the effects of sampling on the R-squared values
+ - plot rasters and vectors
+
+## Downloading and XML  
 
  Grab some raster data from online files
  Here we learn to wrangle strings coming from HTML
@@ -14,7 +34,7 @@ date: "12/3/2021"
  Data is from the WorldCLIM database <https://www.worldclim.org/data/index.html>{target=_blank}
 
 ```{r}
-
+require(terra)
 require("RCurl") 
 #' below the url with the data - remember the final "/" 
 url<-"https://www.cirgeo.unipd.it/shared/tmp/corsoPHD/worldClim/"
@@ -27,6 +47,9 @@ library(XML)
 
 #'  Here we have a function inside another function
 links <-  grep(".tif$", getHTMLLinks(result), value=T)
+
+#' save links
+save(links, file="links.rda")
 
 #'  Download two file if not already present
 if( !file.exists(links[[1]]) ){
@@ -41,69 +64,210 @@ if( !file.exists(links[[2]]) ){
 
 
 
-## Open raster and plot some data
+## Read raster 
 
-Use "terra" package... as you can see, some function names are the same in different packages. To make sure you use the right function use <packagename>::<function name> like below.
+Use "terra" package... as you can see, some function names are the same in different packages. To make sure you use the right function use <packagename>::<function name> like shown below.   
+
+Here we load two rasters, and we check some info about them. 
+We see that the raster object has **attributes** and **methods** , basically attributes are variables and methods are functions that are availabe for that object. 
+
+For example the function "res" is a method of the "SpatRaster" object as we can see here.
+  
+```{r}
+
+#' read the first raster and show a histogram of values
+myFirstRaster <- terra::rast( links[[1]] )
+#' This creates a POINTER to the raster and returns a "SpatRaster" object
+class(myFirstRaster)
+#' what is the resolution? Let's call the "res" method of the "SpatRaster" object
+terra::res(myFirstRaster)
+
+#' that is resolution in latitude and longitude - let's check
+terra::crs(myFirstRaster)
+
+#' let's check in a more readable format
+terra::crs(myFirstRaster, proj4=T)
+
+
+```
+## Transforming CRS 
+
+If we want to know the resolution in meters, we must transform the data from one CRS to another (CRS= Coordinate reference system). Below we transform this to a European CRS, but remember that projection will lead to deformation over large areas. To limit deformation we must choose the ideal CRS - check the one we use <https://epsg.io/3035>{target=_blank} and compare with a more local CRS like the recent Italian Rete Dinamica Nazionale (RDN2008) <https://epsg.io/6707>{target=_blank}. 
+
+Further reading for 
+
+ - Italian Istituto Geografico Militare <https://www.igmi.org/++theme++igm/pdf/nuova_nota_EPSG.pdf>{target=_blank}  
+ 
+ 
 
 ```{r}
 
-myFirstRaster <- terra::rast( links[[1]] )
+myFirstRaster.3035 <- terra::project(myFirstRaster, "epsg:3035")
+res(myFirstRaster.3035)
+
+
+```
+
+
+```{r}
+#' NB we call the histogram plot from terra package because
+#' it is a common function and present in other packages
 terra::hist(myFirstRaster)
 
+#' read the second raster 
 mySecondRaster <- terra::rast( links[[2]] )
 
-
-par(mfrow=c(1,1))
+#' plot both  
 terra::plot(mySecondRaster)
 terra::plot(myFirstRaster)
 
-```
-  
-  
-## Are these data correlated?  
+#' Let's see what is inside this object - 
+#' we use the "str" function that shows the 
+#' structure of an object
+message(str(myFirstRaster))
 
-Let's check the values...
-
-```{r}
-
-vector.raster.1 <- terra::values(myFirstRaster)
-vector.raster.2 <- mySecondRaster[]
-
-#' simple linear model
-
-lm.model<-lm(vector.raster.1 ~  vector.raster.2)
-
-summary(lm.model)
-
-# plot(vector.raster.1 , vector.raster.2)
+#' We see it has 
 
 ```
-
   
-## OK let's batch downlad ...
+  
+## Covariance and correlation  
 
-Introduction to loops! We want to apply the same process, e.g. download and view, for the first 10 raster and check if there is any correlation or covariance between them. Therefore we will have a correlation/covariance matrix, a symmetric matrix, i.e.  $A = A^{T}$ - for example 
+Covariance and correlation show us if two variables "vary" in the same way and thus can be somehow defined as "correlated" (which does not imply causation - see the nice website by Tyler Vigen if this very important concept is not perfectly clear.
+<https://www.tylervigen.com/spurious-correlations>{target=blank_} ).    
 
 
-$$Cov_{N x N} = \begin{bmatrix}1 & x_{1,2} & x_{1,...} & x_{1,N}\\
-x_{2,1} & 1 & x_{2,3} & x_{2,N}\\
-x_{3,1} & x_{3,2} & 1  & x_{...,N}\\
-x_{4,1} & x_{4,2} & x_{4,3}   & 1_{N,N}\\
-\end{bmatrix}$$
+$cov_{X,Y}=\frac{\sum_{i=1}^{N}(x_{i}-\bar{x})(y_{i}-\bar{y})}{N}$ 
+
+Where ${X}$ and ${Y}$  are the two variables, having cardinality of N and $\bar{x}$ and $\bar{y}$ are their respective means.
+
+**Correlation** is covariance which is normalized using the variances:
+
+
+$R_{x,y}=\frac{cov_{x,y}}{\sigma^2_x\sigma^2_y}$ 
+
+where ${\sigma^2}$ is the variance.   
+
+There are several ways to calculate this important information in R, here we use the data from the climate rasters.
 
 
 ```{r}
-
+#' both the two lines below show how to get values
 vector.raster.1 <- terra::values(myFirstRaster)
 vector.raster.2 <- mySecondRaster[]
 
-#' simple linear model
 
-lm.model<-lm(vector.raster.1 ~  vector.raster.2)
-
-summary(lm.model)
-
-# plot(vector.raster.1 , vector.raster.2)
+#' simple correlations
+cor<-cor(vector.raster.1, vector.raster.2,  use="pairwise.complete.obs")
+R.squared<- cor**2
+print(R.squared)
 
 ```
 
+## Sampling a regular grid 
+
+But... do we need all these points (raster can become quite large). When we deal with raster Earth data, the number of pixels (cells) becomes quite large. We can use a sampling approach to make calculations faster without loosing accuracy. NB sampling can become an important issue if your data are **unbalanced**.
+
+```{r}
+
+#' here we sample 10 000 cells using a GRID approach. 
+#' The term cells=T will make the function return the cell number (linearized matrix)
+#' ... check ?spatSample for more info
+cells<-terra::spatSample(myFirstRaster, size=10000, method="regular", cells=T)
+
+
+#' we save these sample for later
+save(cells, file="cells.rda")
+
+vector.raster.1 <-myFirstRaster[cells]
+vector.raster.2 <- mySecondRaster[cells]
+
+#' again simple correlations
+cor.2<-cor(vector.raster.1, vector.raster.2,  use="pairwise.complete.obs")
+R.squared.2<- cor.2**2
+message( round(R.squared.2,4) , " is similar to ", round(R.squared, 4), " ????" )
+
+
+```
+
+Let's sample even less and see how R-squared changes.
+
+
+```{r}
+#' only 500 points!! 
+cells<-terra::spatSample(myFirstRaster, size=500, method="regular", cells=T)
+
+vector.raster.1 <-myFirstRaster[cells]
+vector.raster.2 <- mySecondRaster[cells]
+
+#' again simple correlations
+cor.2<-cor(vector.raster.1, vector.raster.2,  use="pairwise.complete.obs")
+R.squared.2<- cor.2**2
+message( round(R.squared.2,4) , " is similar to ", round(R.squared, 4), " ????" )
+
+
+plot( as.numeric(vector.raster.1[[1]]), as.numeric(vector.raster.2[[1]]), 
+      xlab=names(vector.raster.1), ylab=names(vector.raster.2), 
+      main="Coefficient of determination R-squared",
+      sub=paste0( "With all and 500 points respectively R^2 values are ", 
+                  round(R.squared,3), " and ", round(R.squared.2,3) ) )
+
+
+```
+
+### Samples to vector
+
+Vector data are points, lines or polygons. They are another way to model real elements in digital maps.  
+
+In the following code we read coordinates of the sample grid and we convert it to a vector object with the "terra" library function "vect". We then plot this on top of our data.  
+
+
+
+```{r}
+
+coord.X <- terra::xFromCell(myFirstRaster, cells)
+coord.Y <- terra::yFromCell(myFirstRaster, cells)
+
+message("The second point has coordinate Longitude=", coord.X[[2]], " and Latitude=", coord.Y[[2]])
+
+sample.grid.vect <- terra::vect(cbind(coord.X,coord.Y), crs=4326)
+
+plot(myFirstRaster)
+terra::plot(sample.grid.vect, cex=1, add=TRUE)
+
+```
+
+
+ 
+### Samples to table
+
+Ok, so we have sample data, let's send the data to our colleague as a table with Lat, Long, and two columns with the two climate values.   
+
+Tables in R are  "data.frame" objects. There are more sophisticated tables in the data.table package, which allow indexing and other goodies, but for this course we will stick to the standard.
+
+Here we use coordinates and sampled values to create a table.
+
+
+```{r}
+
+coord.X <- terra::xFromCell(myFirstRaster, cells)
+coord.Y <- terra::yFromCell(myFirstRaster, cells)
+
+myDataTable <- data.frame(lat=coord.Y, long=coord.X, mean.temperature=vector.raster.1[[1]],   annual.precipitation=vector.raster.2[[1]])
+head(myDataTable)
+
+
+#' Let's save our table!
+write.csv(myDataTable, "myDataTable.csv")
+
+#' If we love excel we can use a library called  writexl
+writexl::write_xlsx(myDataTable, "myDataTable.xlsx")
+
+
+```
+
+
+
+## ASSIGNMENT
+
+Choose your own raster and sample it; export 400 sampled points to a CSV file and hand-in.

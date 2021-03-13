@@ -1,0 +1,40 @@
+---
+title: "Day 2 Zonal Statistics"
+author: "Francesco Pirotti"
+date: "12/3/2021"
+output: 
+  html_document:
+    toc: true 
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+  pdf_document: default
+---
+
+ 
+# Zonal statistics
+
+Zonal statistics  sample values inside an area. In these exercise we will sample climate variables from the stack that we read the first day, and assign some **aggregational statistics**.   
+
+Aggregational statistics simple reduce many values to a single value, thus all "moments" of the distribution function, i.e. average, variance, skewness and kurtosis, but also higher order moments if you are interested.
+
+So zonal statistics can be also described as a "map and reduce" process, which is a common term for big-data analytics because it is a highly parallelizable process. Map means that each of the values are assigned (mapped) to a polygon, and reduce means to apply and aggregation function (e.g. the mean of all values mapped to that polygon).
+
+As an example we will "map and reduce" climate variables to $\sim500$ municipalities. 
+
+
+
+
+
+```{r}
+library(sf)
+library(terra)
+load("data/comuni.rda")
+message("Classe = ", class(comuni.merged))
+plot(comuni.merged[,1])
+
+#' size in MB
+message( round(object.size(comuni.merged)/1000000,2), " MB") 
+
+```
+

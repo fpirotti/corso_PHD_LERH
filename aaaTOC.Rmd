@@ -1,0 +1,29 @@
+---
+title: "Geomatics and Earth Surface Modelling"
+author: "Francesco Pirotti"
+date: "13/3/2021"
+output: 
+  html_document:
+    toc: true 
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+  pdf_document: default
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r child = 'day1a.Rmd'}
+```
+
+
+```{r child = 'day1b.Rmd'}
+```
+
+```{r child = 'day1c.Rmd'}
+```
